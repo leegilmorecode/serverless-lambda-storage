@@ -1,0 +1,57 @@
+{
+  "info": {
+    "_postman_id": "679e1108-db57-4ea8-9919-160611d2d00b",
+    "name": "serverless-lambda-storage",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "GET /files/efs",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{url}}/develop/files/efs",
+          "host": ["{{url}}"],
+          "path": ["develop", "files", "efs"]
+        },
+        "description": "Get the files from efs"
+      },
+      "response": []
+    },
+    {
+      "name": "GET /files/tmp",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{url}}/develop/files/tmp",
+          "host": ["{{url}}"],
+          "path": ["develop", "files", "tmp"]
+        },
+        "description": "Get the files from tmp"
+      },
+      "response": []
+    },
+    {
+      "name": "GET /files/s3",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{url}}/develop/files/s3",
+          "host": ["{{url}}"],
+          "path": ["develop", "files", "s3"]
+        },
+        "description": "Get the files from s3"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "url",
+      "value": "https://something.execute-api.eu-west-1.amazonaws.com"
+    }
+  ]
+}

@@ -1,0 +1,286 @@
+service: serverless-lambda-storage
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: 20201221
+  memorySize: 128
+  stage: ${opt:stage, 'develop'}
+  region: ${opt:region, 'eu-west-1'}
+  apiGateway:
+    shouldStartNameWithService: true
+# the following plugins are used for:
+plugins:
+  - serverless-webpack # used for building the code
+  - serverless-s3-remover # remove files from bucket on sls remove
+  - serverless-s3-sync # deploy to s3 our local image files
+  - serverless-plugin-scripts # used to invoke our function on deploy to populate efs fileshare
+package:
+  individually: true
+  # we exclude the node_modules as this keeps our lambda package size small
+  exclude:
+    - node_modules/**
+functions:
+  # get the files from tmp
+  get-files-tmp:
+    role: lambdaS3role
+    handler: ./src/get-files-tmp/get-files-tmp.handler
+    environment:
+      BUCKET_NAME: ${self:custom.bucketName}
+    memorySize: 128
+    timeout: 5
+    # this is the api gateway integration with our lambda function
+    events:
+      - http:
+          path: /files/tmp
+          method: get
+  # get the files from s3
+  get-files-s3:
+    role: lambdaS3role
+    handler: ./src/get-files-s3/get-files-s3.handler
+    environment:
+      BUCKET_NAME: ${self:custom.bucketName}
+    memorySize: 128
+    timeout: 5
+    events:
+      - http:
+          path: /files/s3
+          method: get
+  # get the files from efs
+  get-files-efs:
+    role: lambdaEFSrole
+    handler: ./src/get-files-efs/get-files-efs.handler
+    # integrate the lambda with the efs file system
+    fileSystemConfig:
+      localMountPath: ${self:custom.efsMountPath}
+      arn: !GetAtt AccessPointResource.Arn
+    # associate the lambda to the vpc
+    vpc:
+      securityGroupIds:
+        - !GetAtt VPC.DefaultSecurityGroup
+      subnetIds:
+        - !Ref PrivateSubnetA
+    environment:
+      EFS_MOUNT_PATH: ${self:custom.efsMountPath}
+    memorySize: 128
+    timeout: 5
+    events:
+      - http:
+          path: /files/efs
+          method: get
+  # populate the efs share from s3 on deploy
+  populate-efs:
+    role: lambdaEFSrole
+    handler: ./src/populate-efs/populate-efs.handler
+    environment:
+      BUCKET_NAME: ${self:custom.bucketName}
+      EFS_MOUNT_PATH: ${self:custom.efsMountPath}
+    # integrate the lambda with the efs file system
+    fileSystemConfig:
+      localMountPath: ${self:custom.efsMountPath}
+      arn: !GetAtt AccessPointResource.Arn
+    # associate the lambda to the vpc
+    vpc:
+      securityGroupIds:
+        - !GetAtt VPC.DefaultSecurityGroup
+      subnetIds:
+        - !Ref PrivateSubnetA
+    memorySize: 128
+    timeout: 5
+resources:
+  Resources:
+    # create efs file share
+    FileSystemResource:
+      Type: 'AWS::EFS::FileSystem'
+      Properties:
+        PerformanceMode: generalPurpose
+        Encrypted: true
+        FileSystemPolicy:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Action:
+                - 'elasticfilesystem:ClientMount'
+              Principal:
+                AWS: '*'
+    # create efs mount target
+    MountTargetResource1:
+      Type: AWS::EFS::MountTarget
+      Properties:
+        FileSystemId: !Ref FileSystemResource
+        SubnetId: !Ref PrivateSubnetA
+        SecurityGroups:
+          - !GetAtt VPC.DefaultSecurityGroup
+    # create access point resource
+    AccessPointResource:
+      Type: 'AWS::EFS::AccessPoint'
+      DependsOn:
+        - MountTargetResource1
+      Properties:
+        FileSystemId: !Ref FileSystemResource
+        PosixUser:
+          Uid: '1000'
+          Gid: '1000'
+        RootDirectory:
+          CreationInfo:
+            OwnerGid: '1000'
+            OwnerUid: '1000'
+            Permissions: '0777'
+          Path: '/efs'
+    # create the vpc which the efs file system will reside in
+    VPC:
+      Type: AWS::EC2::VPC
+      Properties:
+        CidrBlock: 10.192.0.0/16
+        EnableDnsSupport: 'true'
+        EnableDnsHostnames: 'true'
+    # create a single private subnet for this demo
+    PrivateSubnetA:
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref VPC
+        CidrBlock: 10.192.10.0/24
+        AvailabilityZone: !Select [0, !GetAZs ''] # Get the first AZ in the list
+        MapPublicIpOnLaunch: false
+    # create private route table
+    PrivateRouteTable1:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId: !Ref VPC
+    # create route table association
+    PrivateSubnet1RouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref PrivateRouteTable1
+        SubnetId: !Ref PrivateSubnetA
+    # create role for the lambda so it can read files from s3 and log the output
+    lambdaS3role:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: LambdaS3role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: LambdaS3Policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - 'Fn::Join':
+                        - ':'
+                        - - 'arn:aws:logs'
+                          - Ref: 'AWS::Region'
+                          - Ref: 'AWS::AccountId'
+                          - 'log-group:/aws/lambda/*:*:*'
+                - Effect: 'Allow'
+                  Action:
+                    - 's3:GetObject'
+                  Resource:
+                    - 'Fn::Join':
+                        - ''
+                        - - 'arn:aws:s3:::'
+                          - Ref: 'FilesBucket'
+                          - '/*'
+    # create efs role
+    lambdaEFSrole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: lambdaEFSrole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: lambdaEFSPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - 'Fn::Join':
+                        - ':'
+                        - - 'arn:aws:logs'
+                          - Ref: 'AWS::Region'
+                          - Ref: 'AWS::AccountId'
+                          - 'log-group:/aws/lambda/*:*:*'
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DetachNetworkInterface
+                    - ec2:DeleteNetworkInterface
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - elasticfilesystem:ClientMount
+                    - elasticfilesystem:ClientWrite
+                    - elasticfilesystem:DescribeMountTargets
+                  Resource: '*'
+                - Effect: 'Allow'
+                  Action:
+                    - 's3:GetObject'
+                  Resource:
+                    Fn::Join:
+                      - ''
+                      - - 'arn:aws:s3:::'
+                        - 'Ref': 'FilesBucket'
+                        - '/*'
+    # creation of the s3 bucket where the files are stored
+    FilesBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+    # create vpc endpoint to connect to s3 from private subnet - in prod create a policy document to tie this down further
+    S3Endpoint:
+      Type: 'AWS::EC2::VPCEndpoint'
+      DependsOn:
+        - 'VPC'
+        - 'PrivateRouteTable1'
+        - 'FilesBucket'
+      Properties:
+        RouteTableIds:
+          - !Ref PrivateRouteTable1
+        ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+        VpcId: !Ref VPC
+custom:
+  # custom variables to be passed through as environment variables
+  bucketName: serverless-lambda-storage-${self:provider.stage}
+  efsMountPath: '/mnt/images'
+  # hooks to deploy images to efs on sls deploy finalisation
+  scripts:
+    hooks:
+      'deploy:finalize': sls invoke -f populate-efs
+  # s3 sync config to push our images to s3 on deploy
+  s3Sync:
+    - bucketName: ${self:custom.bucketName}
+      localDir: ./assets/
+      deleteRemoved: true # optional, indicates whether sync deletes files no longer present in localDir. Defaults to 'true'
+  # s3-remover config - remove any files from the s3 bucket on tear down
+  remover:
+    buckets:
+      - ${self:custom.bucketName}
+  # webpack config
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules:
+      # we also force exclude the aws-sdk through webpack
+      forceExclude:
+        - aws-sdk

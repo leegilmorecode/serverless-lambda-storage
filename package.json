@@ -1,0 +1,46 @@
+{
+  "name": "serverless-lambda-storage",
+  "version": "1.0.0",
+  "description": "An example of various serverless lambda storage options with benchmarks",
+  "main": "index.js",
+  "scripts": {
+    "prettier": "npx prettier --write .",
+    "deploy:develop": "sls deploy --stage=develop",
+    "remove:develop": "sls remove --stage=develop"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leegilmorecode/serverless-lambda-storage.git"
+  },
+  "author": "Lee Gilmore",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/leegilmorecode/serverless-lambda-storage/issues"
+  },
+  "homepage": "https://github.com/leegilmorecode/serverless-lambda-storage#readme",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.81",
+    "@types/node": "^16.4.7",
+    "@types/serverless": "^1.78.32",
+    "@typescript-eslint/eslint-plugin": "^4.28.5",
+    "@typescript-eslint/parser": "^4.28.5",
+    "eslint": "^7.31.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-prettier": "^3.4.0",
+    "file-loader": "^6.2.0",
+    "fork-ts-checker-webpack-plugin": "^6.2.13",
+    "prettier": "^2.3.2",
+    "serverless": "^2.52.1",
+    "serverless-plugin-scripts": "^1.0.2",
+    "serverless-s3-remover": "^0.6.0",
+    "serverless-s3-sync": "^1.17.1",
+    "serverless-webpack": "^5.5.1",
+    "ts-loader": "^9.2.4",
+    "typescript": "^4.3.5",
+    "webpack": "^5.47.0",
+    "webpack-node-externals": "^3.0.0"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.956.0"
+  }
+}
