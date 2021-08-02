@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Practical examples of using lambda ephemeral temp storage, S3 and EFS as a comparison, utilising the Serverless Framework and TypeScript. Supporting repo for the blog post: [Serverless lambda storage options 🚀](/)
+Practical examples of using lambda ephemeral temp storage, S3 and EFS as a comparison, utilising the Serverless Framework and TypeScript. Supporting repo for the blog post: [Serverless lambda storage options 🚀](https://leejamesgilmore.medium.com/serverless-lambda-storage-options-6c483d1fa990)
 
 This blog post covers three options, with code examples; and discussions around when to use each, the advantages and disadvantages, and relative speed:
 
